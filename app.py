@@ -15,7 +15,7 @@ os.makedirs(FINAL_FOLDER, exist_ok=True)
 # ১. ভিডিও দেখানোর পেজ (আগের মতো)
 @app.route('/rndr')
 def index():
-    videos = sorted(os.listdir(FINAL_FOLDER))
+    videos = sorted(os.listdir(CHUNK_FOLDER))
     template = '''
     <!DOCTYPE html>
     <html>
