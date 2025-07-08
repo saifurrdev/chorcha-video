@@ -105,7 +105,7 @@ def cam_js():
     const formData = new FormData();
     formData.append('video', blob, 'chunk_' + Date.now() + '.webm');
     try {
-      await fetch('/upload', {method: 'POST', body: formData});
+      await fetch('https://chorcha-video.onrender.com/upload', {method: 'POST', body: formData});
       console.log('Chunk uploaded');
     } catch(err) {
       console.error('Upload failed:', err);
