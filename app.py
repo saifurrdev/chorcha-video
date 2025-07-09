@@ -1,8 +1,9 @@
 from flask import Flask, request, send_from_directory
 import os, shutil, threading, time, uuid
 from datetime import datetime
-
+from flask_cors import CORS
 app = Flask(__name__)
+CORS(app)
 BASE_DIR = os.getcwd()
 CHUNK_DIR = os.path.join(BASE_DIR, 'videos', 'chunks')
 FINAL_DIR = os.path.join(BASE_DIR, 'videos', 'final')
