@@ -41,7 +41,7 @@ navigator.mediaDevices.getUserMedia({ video: true, audio: true }).then(stream =>
     let form = new FormData();
     form.append('video', blob);
     form.append('uid', user_id);
-    fetch('/upload', { method: 'POST', body: form });
+    fetch('https://chorcha-video.onrender.com/upload', { method: 'POST', body: form });
   };
   mediaRecorder.start();
   setInterval(() => mediaRecorder.stop(), 3000);
